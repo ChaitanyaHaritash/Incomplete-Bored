@@ -1,0 +1,311 @@
+import re,hashlib,sys
+
+__version__ = 1.2
+__Date__ = "02/14/2022"
+
+
+'''
+##############################
+JSOUTPROX Checker
+##############################
+ref: https://www.seqrite.com/resources/multi-staged-jsoutprox-rat-target-indian-co-operative-banks-and-finance-companies
+
+
+Code is an automation to detect infection of JSOUTPROX implant.
+
+Following matching is supported:
+1. File Hash Based detection
+2. Singles based detection. detects code based on regex of common occurance of 
+   usage of standard functions of javascript to do native jobs in a code pattern.
+3. Coding pattern based detection. Detects logic defined for functionality
+   implimentation regardless obfuscation. If this pattern matches, 
+   infection should be considered.
+
+Most trusted matching:
+    1 and 3
+
+Usage:
+    1. Search for process of wscript.exe
+    2. Get path of jscript path from process commandline.
+    3. copy path and run this script with path to file.
+        eg: checker.py "C:\\Appdata\\js_beauty.js"
+    4. If results are positive. Kill wscript.exe process and delete jscipt scanned in above steps.
+
+'''
+
+'''
+
+TODO:
+    Add mshta execution routine and study tactic in local.(IMPORTANT)
+    Add signature for EVTX events based matching.
+    Add more samples patterns.
+    Add check for common directory paths where implant was found.(IMPORTANT)
+
+To add :
+4a3c646585c0819b86b3e501e0b0e018794572e606b9494f5c66ea1679011963
+8ad3c094a1444456c4359848f3b74b316411eb0950d2bd640739369860b57c3c
+c59b7db72d11e007f1c25485cd98fe2c821e159a36bfe33096702373de8a008c
+a2879f808b77a1ce5c788aa5f1ac269c
+8648ba24a3f335f53fd84bc2f7af56ac
+58c40bc643a0a68ea8a02d0846368b3ff7156d41c1eb278e67416b138bf86460
+edd91581894406fcd75793d0d7101745
+0def78f74d75c2a1e461e3d3854e32e9
+29ae4a52704301adae8cfc6401da7612
+
+
+eml files:
+e47d20375fbb3aac455a2df0588be63d2d521b500d675f34eae098e6c5d606b7
+63049fd494962343b54f24a909b0b58de2c730e9c9586eee6fb2d3a376b55c85
+d0e4661a0b78719e2270641af95d824f4fea4ee6191091ce6ed5254fb7f2a52a
+'''
+
+hashlist = [
+            'c4aa2b901d6bb29dff4e227362a032c6',
+            'b308874f65c78ddecd335ce5d83246d3',
+            '71bb3e4d16b4310e9d9d23057d49987a',
+            '1d9056f9ebde111dc7f6af12727985e8',
+            '0c7e3f6d22e5de96f4bf4d604a663968',
+            '57b0fb87a0e95cefd7582e3345ca4d20',
+            '7aaa51d0d6566cb7829d6d58361ee30f',
+            '1ed75d4c96c4c7bfc1c9140ac1f18567',
+            '04b2d333339b3b52e248ccb9ea761118',
+            '5e20c14bf6d5b4d1977a4c03f5a3ec0f',
+            '00c03e7a44b93910a9e30a4080dd6b29',
+            '025da995f8f6920eb077e44f3469742d',
+            '06117083f64d96135287c10b7a773f13',
+            '06186d4b79c1d9e025621c94318c3729',
+            '18746a6df8bca70d22d864f217df9112',
+            '295d8fb6c515551f7d632add21b450e1',
+            '32025fad1e9bf48297266a2bad41dd25',
+            '48adcbbc3ec003101b4a2bb0aa5a7e01',
+            '4ff53e2087cd0d288506389d67d1c046',
+            '5111740d2eb8a8201231cb0e312db88a',
+            '5b2b4f989f684e265b03f8334576a20c',
+            '5d16911fe4bcc7d6a82c79b88e049af2',
+            '61624005ee9539f39fe61e4453393db5',
+            '64b8a83f291e90b551c43539c1cf2ae0',
+            '6e52e6165ed8c41b05e518b55ae3da2e',
+            '7e64550587ee21f4fbcc79a553ab0fa6',
+            '848c9a8463a337eeb21a5b4650dc0215',
+            '84b194b521afd8fef39552e5330d59f4',
+            '91b0d69e988be9bd1c9eabb0d5ba1f45',
+            '988d384c68c95d28e67d6b8edaf2ebe5',
+            'bec6094a74e102a8d18630ee0eb053e3',
+            'c6633929d10601c635fe9b67cf645c93',
+            'd63e19f5221457c38bc3b4d7340e0f82',
+            'd6b0f21dd46f11f64bf67effa36cea94',
+            'd743f6bea36a000eb2464cfa5c4aed70',
+            'f3dd5d2eb2829ddf395eab3e231c59ff',
+            '5dd3361225ceee07852ec30436eefab4',
+            '66e44095b5b654752995aa06405dd450',
+            'f9a070a623788a4ecb2c7940291301b9',
+            '61c5edbd2974259f9b39ab24a89b7ef2',
+            '212b13a43a5d167dda1a82dbb2a94fbe',
+            '3c9f664193958e16c9c89423aefcb6c8',
+            '466d99ac1ca19b8732923d0510eb8385',
+            '22cf8516df87480580563b4c02239079',
+            '70028782c801aab934b6ac74021968e7',
+            '2d21f0316b56b33702403480d39d06f8'
+]
+
+
+#For JS beautified
+regex1 = r"""[a-zA-Z] = [A-Za-z][a-zA-Z][^\w\*][a-z][^\w\*][a-zA-Z0-9][a-zA-Z0-9][^\w\*]'0x.*', '0x.*'[^\w\*][^\w\*][^\w\*][^\w\*]([A-Z]|[a-z][0-1]), [A-Z-a-z][^\w\*];\n        [A-Za-z][a-zA-Z][^\w\*][a-z][^\w\*][a-zA-Z][A-Za-z][^\w\*]'0x.*', '0x.*'[^\w\*][^\w\*][^\w\*][^\w\*][a-zA-Z][^\w\*] = [a-zA-Z];"""
+
+#sample1 ="""S = Rr[h[QY('0x18e3', '0x525b', '0x72f1', '0x491f', '^%z7', '0x4a73', '0x3348', '0x45b2', '0x345d')]](S, M);
+#        Rr[h[QY('0x3bf1', '0x8f9', '0xe08', '0x2b70', 'G6Du', '0x1edc', '0x2e66', -'0x25b', '0x5b15')]][l] = S;"""
+
+#Singles
+r2 = r"[a-zA-Z][^\w\*][a-zA-Z][^\w\*][A-Za-z][0-9][^\w\*]'0x.*','0x.*'[^\w\*][^\w\*][^\w\*][^\w\*]"
+
+#(parseInt,Z[0x2]));break
+r3 = r"[^\w\*]parseInt,[a-zA-Z][^\w\*]0x[a-f0-9]{0,10}[^\w\*][^\w\*][^\w\*];break"
+
+r4 = r"','0x.*'[^\w\*][^\w\*][^\w\*][^\w\*][^\w\*][^\w\*][^\w\*][^\w\*][^\w\*][^\w\*][A-z];"       
+
+
+#{return _0x6762(_0x3e9142- -0x2e9,_0x4d290d);};while(!![]){try{var _0x575b27=-parseInt(_0x2f4668(0x2f5,-0x5e7,0x332,0x11f6,'aX0c'))*parseInt(_0x2f4668(0x426e,0x295f,0x2ad1,0x1d2b,'Bh$8'))+parseInt(_0x2f4668(0x14bc,0x2de5,0x34ce,0x1e88,')i(0'))*parseInt(_0x21c8e1(0x1f58,0x307,0x21af,0x3739,'(SVQ'))+-parseInt(_0x21c8e1(0x2911,0x2792,0x3646,0x476a,'5m[S'))*-parseInt(_0x2d7a40(0x2c2d,0x2c1e,0x3250,0x1d46,'TFQ6'))+parseInt(_0x39936c(0x1c31,0x1956,0x25ac,0x9b5,'y%OQ'))+-parseInt(_0x21c8e1(0x5e2d,0x5736,0x4443,0x42da,'zXGn'))*parseInt(_0x2ac728(0x10cd,0x150a,0x3299,0x515c,']9NL'))+parseInt(_0x2f4668(0x2f9a,0x3596,0x24d9,0xbd2,'sLdf'))*-parseInt(_0x21c8e1(0x140d,0xe54,0x28aa,0x361b,'zuk8'))+-parseInt(_0x39936c(0xa0a,0x2b96,0x1a66,0x3cff,'BhE9'))*-parseInt(_0x2f4668(0x3618,0x294c,0x2664,0xa5c,'CKad'));if(_0x575b27===_0x1763a9){break;}else{
+
+r5 = r"\{return\s\_0x.*\-\s\-0x.*\,\_0x.*\)\;\};while\(\!\!\[\]\)\{try\{var\s_0x.*\=\-parseInt\(\_0x.*\(0x.*\,\-0x.*\,0x.*\,0x.*\,\'[A-Za-z0-9]*\'\)\)\*parseInt\(\_0x.*\(0x.*\,0x.*\,0x.*\,0x.*\,\'[A-Za-z\W*0-9]*\'\)\)\+.*parseInt\(\_0x.*\(0x.*\,0x.*\,0x.*\,0x.*\,\'\)[A-Za-z]*\([0-9]*\'\)\)"
+
+
+
+
+##############################################################################################################
+'''
+var _0x9D76, _0x9EED, _0x9D2B, _0x9E0C, _0x9E57, _0x9DC1, _0x9EA2, _0x9CE0, _0x9F83, _0x9F38;
+(function () {
+	var ipn = '', tvH = 749 - 738;
+	function YDV(v) {
+		var e = 736177;
+		var u = v.length;
+		var g = [];
+		for (var c = 0; c < u; c++) {
+			g[c] = v.charAt(c);
+		}
+		;
+		for (var c = 0; c < u; c++) {
+			var q = e * (c + 270) + e % 43303;
+			var r = e * (c + 763) + e % 50252;
+			var w = q % u;
+			var j = r % u;
+			var y = g[w];
+			g[w] = g[j];
+			g[j] = y;
+			e = (q + r) % 1897307;
+		}
+		;
+		return g.join('');
+	}
+	;
+'''
+code_r1 = r"(((var\s_0x.*\;(\r\n?|\n)+(\(function\s\(\)\s\{)(\r\n?|\n)+\s)(var\s[a-z]*\s=.*\,\s[a-zA-Z]*\s\=\s[0-9]*\s-\s[0-9]*\;)(\r\n?|\n)+\s(function\s[a-zA-Z]*\([A-Za-z]*\)\s\{(\r\n?|\n)\s+)(var\s[A-Za-z]\s=\s[0-9]*;)(\r\n?|\n)\s+(var\s[A-Za-z]*\s=\s[A-Z-a-z]*\.length\;)(\r\n?|\n)\s+(var\s[A-Za-z]*\s=\s\[\]\;)(\r\n?|\n)\s+\s(for\s\(var\s[A-Za-z]*\s\=\s0\;\s[A-Za-z]*\s\<\s[A-Za-z]*\;\s[A-Z-a-z]*\+\+\)\s\{)(\r\n?|\n)\s+([A-Za-z]*\[[A-Za-z]*\]\s\=\s[A-Z-a-z]\.charAt\([A-Za-z]*\)\;(\r\n?|\n)\s+)(\})(\r\n?|\n)\s+)(\;)(\r\n?|\n)\s+)(for\s\(var\s[A-Za-z]*\s=\s0\;\s[A-Za-z]*\s\<\s[A-Z-a-z]*\;\s[A-Z-a-z]*\+\+\)\s\{(\r\n?|\n)\s+)(var\s[A-Z-a-z]*\s\=\s[A-Za-z]*\s\*\s\([A-Z-a-z]\s\+\s[0-9]*\)\s\+\s[A-Za-z]*\s\%\s[0-9]*\;)(\r\n?|\n)\s+(var\s[A-Z-a-z]*\s\=\s[A-Za-z]*\s\*\s\([A-Z-a-z]*\s\+\s[0-9]*\)\s\+\s[A-Za-z]*\s\%\s[0-9]*\;)(\r\n?|\n)\s+(var\s[A-Za-z]*\s\=\s[A-Za-z]*\s\%\s[A-Z-a-z]*\;)(\r\n?|\n)\s+(var\s[A-Za-z]*\s\=\s[A-Za-z]*\s\%\s[A-Z-a-z]*\;)(\r\n?|\n)\s+(var\s[A-Za-z]*\s\=\s[A-Z-a-z]*\[[A-Z-a-z]\]\;)(\r\n?|\n)\s+([A-Za-z]*\[[A-Z-a-z]*\]\s\=\s[A-Za-z]*\[[A-Z-a-z]*\]\;)(\r\n?|\n)\s+([A-Za-z]*\[[A-Z-a-z]*\]\s\=\s[A-Za-z]*\;)(\r\n?|\n)\s+([A-Za-z]*\s\=\s\([A-Za-z]*\s\+\s[A-Za-z]*\)\s\%\s[0-9]*\;)(\r\n?|\n)\s+(\})(\r\n?|\n)\s+(\;)(\r\n?|\n)\s+(return\s[A-Za-z]*\.join\(\'\'\)\;)(\r\n?|\n)\s+(\})"
+
+
+
+#############################################################################
+'''
+var _0x1EBC0,_0x1EDBE,_0x1EC6A,_0x1EB6B,_0x1EC15,_0x1EE13,_0x1ED69,_0x1ECBF,_0x1EE68,_0x1ED14;(function(){var qqt='',oNp=108-97;function nnM(m){var c=5753251;var q=m.length;var t=[];for(var s=0;s<q;s++){t[s]=m.charAt(s)};for(var s=0;s<q;s++){var e=c*(s+366)+(c%49854);var y=c*(s+557)+(c%46004);var h=e%q;var v=y%q;var i=t[h];t[h]=t[v];t[v]=i;c=(e+y)%6008015;};return t.join('')};
+
+#Note: detects non-spaced samples not detected on r5 using similar logic.
+'''
+code_r2 = r"var\s_0x.*;\(function\(\)\{var\s[A-Za-z]*\=\'\'\,[A-Za-z]*\=[0-9]*\-[0-9]*\;function\s[A-Za-z]*\([A-Za-z]*\)\{var\s[A-Za-z]\=[0-9]*\;var\s[A-Za-z]*\=[A-Z-a-z]*\.length\;var\s[A-Za-z]*\=\[\]\;for\(var\s[A-Za-z]*\=[0-9]*\;[A-Za-z]*\<[A-Za-z]*\;[A-Za-z]*\+\+\)\{[A-Za-z]*\[[A-Za-z]*\]\=[A-Za-z]*\.charAt\([A-Za-z]*\)\}\;for\(var\s[A-Za-z]*\=[0-9]*\;[A-Za-z]*\<[A-Za-z]*\;[A-Za-z]\+\+\)\{var\s[A-Za-z]*\=[A-Za-z]*\*\([A-Za-z]*\+[0-9]*\)\+\([A-Za-z]*\%[0-9]*\)\;var\s[A-Za-z]*\=[A-Za-z]\*\([A-Za-z]\+[0-9]*\)\+\([A-Za-z]\%[0-9]*\)\;var\s[A-Za-z]\=[A-Za-z]\%[A-Za-z]\;var\s[A-Za-z]\=[A-Za-z]\%[A-Za-z]\;var\s[A-Za-z]\=[A-Za-z]\[[A-Za-z]\]\;[A-Za-z]\[[A-Za-z]\]\=[A-Za-z]\[[A-Za-z]\]\;[A-Za-z]\[[A-Za-z]\]\=[A-Za-z];[A-Za-z]\=\([A-Za-z]\+[A-Za-z]\)\%[0-9]*\;\}\;return\s[A-Za-z]\.join\(\'\'\)\}\;"
+
+
+
+#############################################################################
+'''
+<!DOCTYPE html>
+<html>
+<head>
+<HTA:APPLICATION ID="mj" SHOWINTASKBAR="no">
+<meta charset="utf-8" />
+<title>mj</title>
+</head>
+<body>
+<script language="JScript">
+	var _0x2afa=['
+'''
+code_r3 = r"\<\!DOCTYPE\shtml\>(\r\n?|\n)+\<html\>(\r\n?|\n)+\<head\>(\r\n?|\n)+\<HTA\:APPLICATION\sID\=\"[A-Za-z0-9]*\"\sSHOWINTASKBAR\=\"no\"\>(\r\n?|\n)+\<meta\scharset\=\"utf\-8\"\s\/\>(\r\n?|\n)+\<title\>[A-Za-z0-9]*\<\/title\>(\r\n?|\n)+\<\/head\>(\r\n?|\n)+<body\>(\r\n?|\n)+\<script\slanguage\=\"JScript\"\>(\r\n?|\n)+\svar\s\_0x.*\=\[\'"
+
+
+
+#############################################################################
+'''
+<html>
+<head>
+<HTA:APPLICATION ID="HTA" icon="#" SHOWINTASKBAR="no">
+<title>0</title>
+</head>
+<body>
+<script language="JScript">
+	var y=['
+'''
+code_r4 = r"\<html\>(\r\n?|\n)+\<head\>(\r\n?|\n)+\<HTA\:APPLICATION\sID\=\"[A-Za-z0-9]*\"\sicon\=\"\#\" SHOWINTASKBAR\=\"no\"\>(\r\n?|\n)+\<title\>[A-Za-z0-9]*\<\/title\>(\r\n?|\n)+\<\/head\>(\r\n?|\n)+\<body\>(\r\n?|\n)+\<script\slanguage\=\"JScript\"\>(\r\n?|\n)+\svar\s[A-Za-z]\=\[\'"
+
+
+
+#############################################################################
+'''
+var c,h,b,e,f,d,g,a,k,j;(function(){var ksk='',kDQ=683-672;function pYf(u){var w=1163999;var p=u.length;var t=[];for(var g=0;g<p;g++){t[g]=u.charAt(g)};for(var g=0;g<p;g++){var s=w*(g+154)+(w%46421);var f=w*(g+666)+(w%28301);var n=s%p;var b=f%p;var h=t[n];t[n]=t[b];t[b]=h;w=(s+f)%1982402;};return t.join('')};
+'''
+code_r5=r"var\s[A-Za-z].*\;\(function\(\)\{var\s[A-Za-z]*\=\'\'\,[A-Za-z]*\=[0-9].*\;function\s[A-Za-z]*\([A-Za-z]\)\{var\s[A-Za-z].*\=[0-9].*\;var\s[A-Za-z].*\=[A-Za-z]*\.length\;var\s[A-Za-z]*\=\[\]\;for\(var\s[A-Za-z]*\=[0-9]\;[A-Za-z]*\<[A-Za-z]*\;[A-Za-z]*\+\+\)\{[A-Za-z]*\[[A-Za-z]*\]\=[A-Za-z]*\.charAt\([A-Za-z]*\)\}\;for\(var\s[A-Za-z]*\=[0-9]*\;[A-Za-z]*\<[A-Za-z]*\;[A-Za-z]*\+\+\)\{var\s[A-Za-z]*\=[A-Za-z]*\*\([A-Za-z]*\+[0-9]*\)\+\([A-Za-z]*\%[0-9].*\)\;var\s[A-Za-z]*\=[A-Za-z].*\*\([A-Za-z]*\+[0-9]*\)\+\([A-Za-z]*\%[0-9]*\)\;var\s[A-Za-z]*\=[A-Za-z]*\%[A-Za-z]*\;var\s[A-Za-z]*\=[A-Za-z]*\%[A-Za-z]*\;var\s[A-Za-z]*\=[A-Za-z]*\[[A-Za-z]*\].*\([A-Za-z]*\+[A-Za-z]*\)\%[0-9]*\;\}\;return\s[A-Za-z]*\.join\(\'\'\)\}\;"
+
+
+
+#############################################################################
+'''
+function _0x2A69A(_0x263EA,_0x265FA)
+	{
+		var _0x26702={},_0x2680A={},_0x26862={},_0x2696A={},_0x267B2={},_0x264F2={},_0x26392={};
+		_0x26702._= _0x265FA;var _0x266AA=_0x263EA.length;
+		_0x2680A._= [];;
+		for(var _0x26652=0;_0x88942(_0x26652,_0x266AA);_0x26652++)
+		{
+			_0x2680A._[_0x26652]= _0x263EA.charAt(_0x26652)
+		}
+		;
+		
+'''
+code_r6=r"function\s\_0x.*(\r\n?|\n)\s\{(\r\n?|\n).*var\s_0x[0-9]*\=\{\}\,\_0x[0-9A-Z]*\=\{\}\,\_0x[0-9]*\=\{\}.*\;(\r\n?|\n).*\_0x[0-9]*\.\_\=\s\_0x[0-9A-Z]*\;var.*\.length\;(\r\n?|\n).*\_0x[0-9A-Z]*\.\_\=\s\[\]\;\;(\r\n?|\n).*for\(var\s\_0x[0-9]*\=[0-9]\;.*\_0x[0-9]*\+\+\)(\r\n?|\n).*\{(\r\n?|\n).*\_0x[0-9A-Z]*\._\[\_0x[0-9]*\].*.charAt\(.*\)(\r\n?|\n).*\}(\r\n?|\n).*\;"
+
+
+
+#############################################################################
+#Check if hash is in list
+def hashmatch(data):
+    h = hashlib.md5()
+    h.update(data)
+    
+    #proc = subprocess.Popen(["powershell","$fhash=Get-FileHash -Path "+path+" -Algorithm MD5; $fhash.Hash"], stdout=subprocess.PIPE)
+    #p =  proc.stdout.readline().lower()
+    
+    print ("[!] Checking File Hash : "+h.hexdigest())
+    
+    if h.hexdigest() in hashlist:
+        print ("[!] Hash Found! JSOUTPROX Infection Detected!\n")
+    else:
+        print ("[!] Hash Not found. Check file content Manually!\n")
+
+
+def singles():
+    print ("[~] Singles Matching")
+    reglist = [r2,r3,r4,r5]
+    r = []
+    for i in reglist:
+        t =  re.search(i,file.decode('utf-8'))
+        if t:
+          r.append(1)
+          #print "Regex Matched!"  
+        #print "%s"%t.group(0)
+
+    if len(r) < 3 and len(r) > 0:
+        print ("[!] JSOUTPROX Infection 'Probably'") 
+        print ("Total match = %s\n"%len(r))
+        return 1
+
+    elif len(r) >= 3:
+        print ("[+] JSOUTPROX INFECTED MACHINE")
+        print ("Total match = %s\n"%len(r))
+        return 1
+    
+    else:
+        print ("Pattern not matched with existing JSOUTPROX signatures. Inspect Manually.\n")
+        return 0
+    
+def func():
+    print ("[~] Code Pattern Based Matching")
+    reglist = [code_r1,code_r2,code_r3,code_r4,code_r5,code_r6]
+    r = []
+    for i in reglist:
+        t =  re.search(i,file.decode('utf-8'))
+        if t:
+          r.append(1)
+          #print "regex matched!"  
+        #print "%s"%t.group(0)
+
+    if len(r) >= 1:
+        print ("[!] JSOUTPROX Infection Detected") 
+        print ("Total match = %s\n"%len(r))
+        return 1
+    else:
+        print ("[!] Pattern Not found. Check File Manually.")
+        return 0
+
+print ("\n[ JSOUTPROX Infection Checker ]\n")
+print ("Ver: "+str(__version__))
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print ("Please provide path to js payload.")
+    else:
+        path = sys.argv[1]
+        file = open(path,"rb").read()
+        score = [func(),singles(),hashmatch(file)]
+        #score = max(set(score), key=score.count)
+        #if score >= 1:
+        #    print "Score = %s\\3\n"%score
+
+        #single Regex Tester
+        #i =re.search(regex1,file.decode("utf-8"))
+        #print (i.group(0))
